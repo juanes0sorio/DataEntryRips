@@ -45,17 +45,18 @@ def extraer_textos(imagenes):
         - Edad
         - Teléfono
         - (El género no aparece explícito, pero debe inferirse a partir del nombre)
+        - Direccion
 
         Instrucciones:
         - Extrae los datos de cada persona de forma precisa.
         - Devuelve ÚNICAMENTE una tabla sin texto adicional ni explicaciones.
         - La tabla debe tener exactamente estas columnas:
-        nombre | apellidos | cedula | edad | telefono | genero
+        nombre | apellidos | cedula | edad | telefono | genero | direccion
         - Usa un formato claro de tabla o CSV, ideal para convertir directamente en Excel.
 
         Detalles importantes:
         - El teléfono debe tener 7 o 10 dígitos.
-        - Si un dato no se puede leer, deja el campo vacío.
+        - Si un dato no se puede leer, intenta relacionarlo con el contexto colombiano y llenalo de forma inteligente, si no deja el campo vacío.
         - Deduce el género (M o F) según el nombre, usando contexto colombiano.
         - No agregues comentarios, encabezados ni texto antes o después de la tabla.
         """
@@ -108,25 +109,47 @@ def proceso_digitacion(input_folder, output_excel):
         if i + 5 < len(archivos):
             print("⏳ Esperando 12 segundos para respetar el límite gratuito...")
             time.sleep(12)
+        
+        # Guardar backup del lote
+        os.makedirs("backups", exist_ok=True)
+        backup_path = os.path.join("backups", f"backup_lote_{i // 5 + 1}.xlsx")
+        df_lote.to_excel(backup_path, index=False)
+        print(f"💾 Backup guardado en {backup_path}")
 
 
     df_final = pd.concat(todos_los_resultados, ignore_index=True)
     df_final.to_excel(output_excel, index=False)
     print(f"✅ Resultados guardados en {output_excel}")
 
-def seleccionar_roi_manual(path):
+def seleccionar_roi_manual(path, max_width=1000, max_height=800):
     """
     Permite seleccionar manualmente la región de interés en la imagen con el mouse.
-    Retorna las coordenadas (x1, y1, x2, y2)
+    Redimensiona la imagen si es muy grande, y ajusta las coordenadas al tamaño original.
     """
     img = cv2.imread(path)
     if img is None:
         raise FileNotFoundError(f"No se pudo abrir la imagen: {path}")
 
+    # Guardar tamaño original
+    orig_h, orig_w = img.shape[:2]
 
-    r = cv2.selectROI("Selecciona la región de interés", img)
+    # Calcular escala si la imagen es muy grande
+    scale_w = max_width / orig_w
+    scale_h = max_height / orig_h
+    scale = min(scale_w, scale_h, 1.0)  # No agrandar imágenes pequeñas
+
+    # Redimensionar solo si es necesario
+    if scale < 1.0:
+        resized = cv2.resize(img, (int(orig_w * scale), int(orig_h * scale)))
+    else:
+        resized = img.copy()
+
+    # Mostrar y seleccionar ROI
+    r = cv2.selectROI("Selecciona la región de interés", resized)
     cv2.destroyAllWindows()
-    x, y, w, h = map(int, r)
+
+    # Convertir coordenadas a tamaño original
+    x, y, w, h = [int(v / scale) for v in r]
     return (x, y, x + w, y + h)
 
 
